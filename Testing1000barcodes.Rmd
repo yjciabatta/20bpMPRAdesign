@@ -1,0 +1,44 @@
+---
+title: "Barcode Generation - Liu Method"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+setwd("/Users/yshibata/Documents/RStudio Docs/MPRAdesign")
+library(rareGWAMA);
+mirna <- as.vector(unlist(as.data.frame(fread(file='HumanmiRNAseedsF.fasta',header=F,sep='\t'))));
+mirna.new <- gsub('U',"T",mirna)
+generate.kmer <- function(k=10,n=100) {
+  freq <- list(A=.25,T=.25,G=.25,C=.25)
+  kmer <- 0;
+  ii <- 1;
+  while(ii<=n) {
+    
+    seq.vec <- sample(c('A','T','G','C'),k,replace=T,prob=freq);
+    seq.tmp <- paste(seq.vec,sep='',coillapse='');
+    is.mirna <- (length(grep(seq.tmp, mirna.new))>0);
+    
+    is.polymer <- (length(c(grep('AAAA',seq.tmp),
+                            grep('TTTT',seq.tmp),
+                            grep('TTTT',seq.tmp),
+                            grep('TTTT',seq.tmp)))>0);
+    is.4 <- (length(unique(seq.vec))==4)
+    if(is.mirna==0 & is.polymer==0 & is.4==1) {
+      kmer[ii] <- seq.tmp;
+      ii <- ii+1;
+    }
+    if(is.mirna>0) print(c('overlap with mirna',seq.tmp));
+    if(is.polymer>0) print(c('polymer',seq.tmp));
+    if(is.4==0) print(c('not all 4',seq.tmp));
+  }
+  return(kmer);
+}
+sleep_for_a_minute <- function() {generate.kmer}
+start_time <- Sys.time()
+sleep_for_a_minute()
+end_time <- Sys.time()
+end_time - start_time
+kmer <- generate.kmer();
+```

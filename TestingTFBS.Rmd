@@ -1,0 +1,214 @@
+Testing TFBStools
+
+```{r}
+library(TFBSTools)
+## PFMatrix construction; Not all of the slots need to be initialised.
+pfm <- PFMatrix(ID="MA0004.1", name="Arnt", 
+                matrixClass="Zipper-Type", strand="+",
+                bg=c(A=0.25, C=0.25, G=0.25, T=0.25),
+                tags=list(family="Helix-Loop-Helix", species="10090",
+                          tax_group="vertebrates",medline="7592839", 
+                          type="SELEX",ACC="P53762", pazar_tf_id="TF0000003",
+                          TFBSshape_ID="11", TFencyclopedia_ID="580"),
+                profileMatrix=matrix(c(4L,  19L, 0L,  0L,  0L,  0L,
+                                       16L, 0L,  20L, 0L,  0L,  0L,
+                                       0L,  1L,  0L,  20L, 0L,  20L,
+                                       0L,  0L,  0L,  0L,  20L, 0L),
+                                     byrow=TRUE, nrow=4,
+                                     dimnames=list(c("A", "C", "G", "T"))
+                                     )
+                )
+
+pfm
+
+## coerced to matrix
+as.matrix(pfm)
+
+## access the slots of pfm
+ID(pfm)
+name(pfm)
+Matrix(pfm)
+ncol(pfm)
+length(pfm)
+
+## convert a PFM to PWM, ICM
+pwm <- toPWM(pfm, type="log2probratio", pseudocounts=0.8,
+             bg=c(A=0.25, C=0.25, G=0.25, T=0.25))
+
+icm <- toICM(pfm, pseudocounts=sqrt(rowSums(pfm)[1]), schneider=FALSE,
+             bg=c(A=0.25, C=0.25, G=0.25, T=0.25))
+
+## get the reverse complment matrix with all the same information except the strand.
+pwmRevComp <- reverseComplement(pwm)
+```
+```{r}
+pfm2 <- pfm
+pfmList <- PFMatrixList(pfm1=pfm, pfm2=pfm2, use.names=TRUE)
+pfmList
+names(pfmList)
+```
+```{r}
+ xmlFirst <- file.path(system.file("extdata", package="TFBSTools"),
+                        "tffm_first_order.xml")
+  tffmFirst <- readXMLTFFM(xmlFirst, type="First")
+  tffm <- getPosProb(tffmFirst)
+
+  xmlDetail <- file.path(system.file("extdata", package="TFBSTools"),
+                         "tffm_detailed.xml")
+  tffmDetail <- readXMLTFFM(xmlDetail, type="Detail")
+  getPosProb(tffmDetail)
+```
+```{r}
+library(BiocFileCache)
+library(dbplyr)
+library(JASPAR2022)
+suppressMessages(library(JASPAR2022))
+opts <- list()
+opts[["species"]] <- 9606
+opts[["name"]] <- "RUNX1"
+opts[["type"]] <- "SELEX"
+opts[["all_versions"]] <- TRUE
+PFMatrixList <- getMatrixSet(JASPAR2022, opts)
+PFMatrixList
+
+opts2 <- list()
+opts2[["type"]] <- "SELEX"
+PFMatrixList2 <- getMatrixSet(JASPAR2022, opts2)
+PFMatrixList2
+```
+```{r}
+db <- "myMatrixDb.sqlite"
+initializeJASPARDB(db, version="2022")
+data("MA0043")
+storeMatrix(db, MA0043)
+deleteMatrixHavingID(db,"MA0043.1")
+file.remove(db)
+```
+
+```{r}
+pwm <- toPWM(pfm, pseudocounts=0.8)
+pwm
+
+## one to one comparison
+data(MA0003.2)
+data(MA0004.1)
+pfmSubject <- MA0003.2
+pfmQuery <-  MA0004.1
+PFMSimilarity(pfmSubject, pfmQuery)
+
+## one to several comparsion
+PFMSimilarity(pfmList, pfmQuery)
+
+## align IUPAC string
+IUPACString <- "ACGTMRWSYKVHDBN"
+PFMSimilarity(pfmList, IUPACString)
+```
+
+```{r}
+library(Biostrings)
+data(MA0003.2)
+data(MA0004.1)
+pwmList <- PWMatrixList(MA0003.2=toPWM(MA0003.2), MA0004.1=toPWM(MA0004.1),
+                        use.names=TRUE)
+subject <- DNAString("GAATTCTCTCTTGTTGTAGTCTCTTGACAAAATG")
+siteset <- searchSeq(pwm, subject, seqname="seq1", min.score="60%", strand="*")
+
+sitesetList <- searchSeq(pwmList, subject, seqname="seq1",
+                         min.score="60%", strand="*")
+
+
+## generate gff2 or gff3 style output
+head(writeGFF3(siteset))
+head(writeGFF3(sitesetList))
+head(writeGFF2(siteset))
+
+## get the relative scores
+relScore(siteset)
+relScore(sitesetList)
+
+## calculate the empirical p-values of the scores
+pvalues(siteset, type="TFMPvalue")
+pvalues(siteset, type="sampling")
+```
+```{r}
+library(Biostrings)
+data(MA0003.2)
+pwm <- toPWM(MA0003.2)
+aln1 <- DNAString("ACTTCACCAGCTCCCTGGCGGTAAGTTGATC---AAAGG---AAACGCAAAGTTTTCAAG")
+aln2 <- DNAString("GTTTCACTACTTCCTTTCGGGTAAGTAAATATATAAATATATAAAAATATAATTTTCATC")
+sitePairSet <- searchAln(pwm, aln1, aln2, seqname1="seq1", seqname2="seq2",
+                         min.score="50%", cutoff=0.5,
+                         strand="*", type="any")
+## generate gff style output
+head(writeGFF3(sitePairSet))
+head(writeGFF2(sitePairSet))
+
+## search the Axt alignment
+library(CNEr)
+axtFilesHg19DanRer7 <- file.path(system.file("extdata", package="TFBSTools"),
+                                 "hg19.danRer7.net.axt")
+axtHg19DanRer7 <- readAxt(axtFilesHg19DanRer7)
+sitePairSet <-  searchAln(pwm, axtHg19DanRer7, min.score="80%",
+                          windowSize=51L, cutoff=0.7, strand="*",
+                          type="any", conservation=NULL, mc.cores=1)
+GRangesTFBS <- toGRangesList(sitePairSet, axtHg19DanRer7)
+GRangesTFBS$targetTFBS
+GRangesTFBS$queryTFBS
+```
+```{r}
+library(TFBSTools)
+library(JASPAR2022) # or use 2014 version if you prefer
+library(Biostrings)
+db <- file.path(system.file("extdata", package="JASPAR2022"), "JASPAR2022.sqlite")
+
+# provide your motifs here or read in from file
+mymotifs <- c("MA0018.2", "MA0024.1", "MA0062.1", "MA0099.2") 
+PFMatrixList <- getMatrixByID(db, ID = mymotifs)
+
+# provide your genome fasta file here
+HSV1 <- readDNAStringSet("ftp://ftp.ebi.ac.uk/pub/databases/ena/wgs/public/fkj/FKJZ01.fasta.gz") 
+sitesetList <- searchSeq(toPWM(PFMatrixList), HSV1, min.score="90%")
+
+# generate GRangesList (and unlist if you prefer a single GRanges object)
+unlist(as(sitesetList, "GRangesList")) 
+```
+```{r}
+pfm <- PWMatrix(ID="unknown", name="unknown", 
+                matrixClass="unknown", strand="+",
+                bg=c(A=0.25, C=0.25, G=0.25, T=0.25))
+searchSeq(pfm, DNAStringSet(), seqname="DNAStringSet", strand="*", min.score="80%")
+```
+
+```{r}
+library(TFBSTools)
+library(JASPAR2022)
+pwm_library = getMatrixSet(JASPAR2022, opts=list(collection = 'CORE',species = 'Homo sapiens'))
+
+# find the most similar motif to our motif
+pwm_sim = PWMSimilarity(pwm_library, method = 'Pearson')
+
+pwm_library_list = lapply(pwm_library, function(x){
+  data.frame(ID = ID(x), name = name(x))
+})
+
+# combine the list into one data frame
+pwm_library_dt = dplyr::bind_rows(pwm_library_list)
+# fetch the similarity of each motif to our unknown motif
+pwm_library_dt$similarity = pwm_sim[pwm_library_dt$ID]
+# find the most similar motif in the library
+pwm_library_dt = pwm_library_dt[order(-pwm_library_dt$similarity),]
+```
+
+```{r}
+setwd("/Users/yshibata/Documents/RStudio Docs/20bpMPRAdesign")
+library("tidyverse")
+library("phylotools")
+
+list.files()
+link <- "hg38_motif.csv"
+dat <- read.csv(link, header = TRUE)
+colnames(dat) <- c('sample_id', 'motif_seq')
+print(dat)
+dat2fasta(dat, "TFBSChiPBase.fasta")
+```
+
