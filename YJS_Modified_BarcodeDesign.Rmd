@@ -1,0 +1,58 @@
+
+Barcode Generation
+- 10 bp length
+- 1000 barcodes total
+- 4 filtering criteria
+
+```{r}
+##Modification with loop
+setwd("/Users/yshibata/Documents/GitHub/20bpMPRAdesign")
+library("Biostrings")
+library("tidyverse")
+library("universalmotif")
+library("TFBSTools")
+library("rareGWAMA")
+
+allSeeds <- readRNAStringSet("HumanmiRNAseedsF.fasta")
+allSeedsmRNA <- Biostrings::reverseComplement(allSeeds)
+allSeedsDNA <- DNAStringSet(allSeedsmRNA) %>% unique
+seedSeqs <- allSeedsDNA %>% subseq(2, 7) %>% unique
+
+allTFBS <- readDNAStringSet("TFBSChiPBase.fasta")
+allTFBSDNA <- DNAStringSet(allTFBS)
+
+generate.kmer <- function(k=10,n=1000) {
+  freq <- list(A=.25,T=.25,C=.25,G=.25)
+  kmer <- 0;
+  ii <- 1;
+  while(ii<=n) {
+    
+    seq.vec <- sample(c('A','T','G','C'),k,replace=T,prob=freq);
+    seq.tmp <- paste(seq.vec,sep='',collapse='');
+    
+    ##create a loop for RNA & TFBS
+    haveSeedlist <- match(seedSeqs,seq.tmp);
+    is.mirna <- (length(haveSeedlist)>0);
+    haveTFBSlist <- match(allTFBSDNA,seq.tmp);
+    is.TFBS <- (length(haveTFBSlist)>0);
+    is.polymer <- (length(c(grep('AAAA',seq.tmp),
+                            grep('TTTT',seq.tmp),
+                            grep('CCCC',seq.tmp),
+                            grep('GGGG',seq.tmp)))>0);
+    is.4 <- (length(unique(seq.vec))==4)
+    if(is.mirna==0 & is.TFBS==0 & is.polymer==0 & is.4==1) {
+      kmer[ii] <- seq.tmp;
+      ii <- ii+1;
+    }
+    if(is.mirna>0) print(c('overlap with mirna',seq.tmp));
+    if(is.TFBS>0) print(c('overlap with TFBS', seq.tmp));
+    if(is.polymer>0) print(c('polymer',seq.tmp));
+    if(is.4==0) print(c('not all 4',seq.tmp));
+  }
+  return(kmer);
+}
+
+kmer <- generate.kmer();
+print(kmer)
+write.csv(kmer,'/Users/yshibata/Documents/GitHub/20bpMPRAdesign/10bpbarcodesX1000.csv')
+```
