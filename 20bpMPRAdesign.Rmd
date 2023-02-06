@@ -12,7 +12,7 @@ output:
   3) Allowing regeneration of barcodes in each step to always end with 1000 barcodes
 
 ```{r}
-setwd("/Users/yshibata/Documents/RStudio Docs/MPRAdesign")
+setwd("/Users/yshibata/Documents/GitHub/20bpMPRAdesign")
 library("tidyverse")
 library("phylotools")
 
@@ -32,7 +32,22 @@ dat2fasta(HumanmiRNAseeds, "HumanmiRNAseedsF.fasta")
 `
 
 ```{r}
-setwd("/Users/yshibata/Documents/RStudio Docs/MPRAdesign")
+setwd("/Users/yshibata/Documents/GitHub/20bpMPRAdesign")
+library("tidyverse")
+library("phylotools")
+
+list.files()
+link <- "hg38_motif.csv"
+dat <- read.csv(link, header = TRUE)
+colnames(dat) <- c('seq.name', 'seq.text')
+print(dat)
+dat2fasta(dat, outfile = "TFBSChiPBase.fasta")
+```
+
+`
+
+```{r}
+setwd("/Users/yshibata/Documents/GitHub/20bpMPRAdesign")
 library("Biostrings")
 library("tidyverse")
 library("universalmotif")
@@ -47,7 +62,7 @@ for (i in 4) {
   }
 }
 
-barcodes <- create_sequences("DNA", 20000, 20, rng.seed = 1) %>% DNAStringSet
+barcodes <- create_sequences("DNA", 500000, 20, rng.seed = 1) %>% DNAStringSet
 ##bp changed from 10 to 20
 paste0('Sample of random sequences generated')
 head(barcodes)
@@ -55,12 +70,14 @@ cat(paste0('done generating bacrcodes at ', Sys.time()))
 print(length(barcodes))
 summary(barcodes)
 
+##missing nucleotides filter
 missingone <- apply(alphabetFrequency(barcodes) [,1:4], 1, function(x){any(x == 0)})
 barcodes <- barcodes[!missingone]
 cat(paste0('done removing barcodes missing a nucleotide at ', Sys.time()))
 print(length(barcodes))
 summary(barcodes)
 
+##4 bp repeats filter
 hasnucruns <- vcountPDict(nucruns, barcodes) %>% colSums
 hasnucruns <- hasnucruns > 0
 barcodes <- barcodes[!hasnucruns]
@@ -68,6 +85,7 @@ cat(paste0('done removing barcodes with runs of 4 or more at ', Sys.time()))
 print(length(barcodes))
 summary(barcodes)
 
+##TCT sequences filter
 seqremove <- DNAStringSet("TCT")
 TCTseq <- vcountPDict(seqremove, barcodes) %>% colSums
 TCTseq <- TCTseq > 0
@@ -76,7 +94,33 @@ cat(paste0('done removing sequences with TCT', Sys.time()))
 print(length(barcodes))
 summary(barcodes)
 
+##seed miRNAs filter
 allSeeds <- readRNAStringSet("HumanmiRNAseedsF.fasta")
-allSeedsmRNA <- Biostrings::complement(allSeeds)
+allSeedsmRNA <- Biostrings::reverseComplement(allSeeds)
 allSeedsDNA <- DNAStringSet(allSeedsmRNA) %>% unique
 seedSeqs <- allSeedsDNA %>% subseq(2, 7) %>% unique
+
+haveSeedlist <- vwhichPDict(seedSeqs, barcodes)
+save(list = c('barcodes', 'haveSeedlist'), file = '~/haveHumanRNAiSeeds.RData')
+haveSeed <- sapply(haveSeedlist, function(x){length(x) > 0})
+barcodes <- barcodes[!haveSeed]
+cat(paste0('done removing those with mirSeeds at ', Sys.time()))
+print(length(barcodes))
+summary(barcodes)
+
+##TFBSs filter
+allTFBS <- readDNAStringSet("TFBSChiPBase.fasta")
+allTFBSDNA <- DNAStringSet(allTFBS)
+
+haveTFBSlist <- vwhichPDict(allTFBSDNA, barcodes)
+save(list = c('barcodes', 'haveTFBSlist'), file = '~/haveHumanTFBS.RData')
+haveTFBS <- sapply(haveTFBSlist, function(x){length(x) > 0})
+barcodes <- barcodes[!haveTFBS]
+cat(paste0('done removing those with TFBS at ', Sys.time()))
+print(length(barcodes))
+summary(barcodes)
+write.csv(barcodes,'/Users/yshibata/Documents/GitHub/20bpMPRAdesign/20bpbarcodes.csv')
+
+```
+
+
